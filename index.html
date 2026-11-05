@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pong</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #101522;
+      color: #f3f6ff;
+      font-family: system-ui, sans-serif;
+    }
+
+    main {
+      width: min(900px, 94vw);
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      letter-spacing: 0.15em;
+    }
+
+    .scoreboard {
+      display: flex;
+      justify-content: center;
+      gap: 48px;
+      margin-bottom: 12px;
+      font-size: 1.25rem;
+    }
+
+    .score {
+      min-width: 2ch;
+      color: #79f2c0;
+      font-size: 1.6rem;
+      font-weight: 700;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 2px solid #53617d;
+      border-radius: 8px;
+      background: #090d16;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .controls {
+      min-height: 2em;
+      margin: 12px 0;
+      color: #c0c8d8;
+    }
+
+    button {
+      padding: 9px 18px;
+      border: 0;
+      border-radius: 6px;
+      background: #79f2c0;
+      color: #101522;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover { background: #a0ffda; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>PONG</h1>
+    <div class="scoreboard" aria-label="Score">
+      <div>You: <span class="score" id="playerScore">0</span></div>
+      <div>Computer: <span class="score" id="computerScore">0</span></div>
+    </div>
+
+    <canvas id="game" width="800" height="500" aria-label="Pong game"></canvas>
+    <p class="controls" id="status">Move your mouse over the game or use ↑ and ↓ to play.</p>
+    <button id="restart" type="button">Restart game</button>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const playerScoreEl = document.getElementById("playerScore");
+    const computerScoreEl = document.getElementById("computerScore");
+    const statusEl = document.getElementById("status");
+    const restartButton = document.getElementById("restart");
+
+    const WIDTH = canvas.width;
+    const HEIGHT = canvas.height;
+    const PADDLE_WIDTH = 12;
+    const PADDLE_HEIGHT = 90;
+    const PADDLE_MARGIN = 24;
+    const WINNING_SCORE = 5;
+
+    const player = { x: PADDLE_MARGIN, y: HEIGHT / 2 - PADDLE_HEIGHT / 2, score: 0 };
+    const computer = {
+      x: WIDTH - PADDLE_MARGIN - PADDLE_WIDTH,
+      y: HEIGHT / 2 - PADDLE_HEIGHT / 2,
+      score: 0
+    };
+    const ball = { x: WIDTH / 2, y: HEIGHT / 2, radius: 9, vx: 5, vy: 3 };
+
+    const keys = { up: false, down: false };
+    let gameOver = false;
+    let lastTime = 0;
+
+    function clampPaddle(paddle) {
+      paddle.y = Math.max(0, Math.min(HEIGHT - PADDLE_HEIGHT, paddle.y));
+    }
+
+    function serve(direction) {
+      ball.x = WIDTH / 2;
+      ball.y = HEIGHT / 2;
+      ball.vx = 5 * direction;
+      ball.vy = (Math.random() * 4 - 2) || 1;
+    }
+
+    function resetGame() {
+      player.score = 0;
+      computer.score = 0;
+      playerScoreEl.textContent = "0";
+      computerScoreEl.textContent = "0";
+      gameOver = false;
+      statusEl.textContent = "Move your mouse over the game or use ↑ and ↓ to play.";
+      serve(Math.random() < 0.5 ? -1 : 1);
+    }
+
+    function scorePoint(whoScored) {
+      if (whoScored === "player") {
+        player.score++;
+        playerScoreEl.textContent = player.score;
+        serve(-1);
+      } else {
+        computer.score++;
+        computerScoreEl.textContent = computer.score;
+        serve(1);
+      }
+
+      if (player.score === WINNING_SCORE || computer.score === WINNING_SCORE) {
+        gameOver = true;
+        statusEl.textContent = player.score === WINNING_SCORE
+          ? "You win! Press Restart game to play again."
+          : "The computer wins! Press Restart game to play again.";
+      }
+    }
+
+    function moveBall() {
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+
+      // Bounce off the top and bottom walls.
+      if (ball.y - ball.radius <= 0 || ball.y + ball.radius >= HEIGHT) {
+        ball.vy *= -1;
+        ball.y = Math.max(ball.radius, Math.min(HEIGHT - ball.radius, ball.y));
+      }
+
+      // Check for collision with a paddle.
+      const hitsPaddle = (paddle) =>
+        ball.x - ball.radius < paddle.x + PADDLE_WIDTH &&
+        ball.x + ball.radius > paddle.x &&
+        ball.y + ball.radius > paddle.y &&
+        ball.y - ball.radius < paddle.y + PADDLE_HEIGHT;
+
+      if (ball.vx < 0 && hitsPaddle(player)) {
+        ball.x = player.x + PADDLE_WIDTH + ball.radius;
+        ball.vx = Math.abs(ball.vx) * 1.04;
+        ball.vy += ((ball.y - (player.y + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2)) * 2;
+      } else if (ball.vx > 0 && hitsPaddle(computer)) {
+        ball.x = computer.x - ball.radius;
+        ball.vx = -Math.abs(ball.vx) * 1.04;
+        ball.vy += ((ball.y - (computer.y + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2)) * 2;
+      }
+
+      // A ball leaving either side awards a point.
+      if (ball.x + ball.radius < 0) scorePoint("computer");
+      if (ball.x - ball.radius > WIDTH) scorePoint("player");
+    }
+
+    function update(delta) {
+      if (gameOver) return;
+
+      const step = Math.min(delta / 16.67, 2);
+
+      if (keys.up) player.y -= 7 * step;
+      if (keys.down) player.y += 7 * step;
+      clampPaddle(player);
+
+      // Simple computer opponent that follows the ball with a speed limit.
+      const computerCenter = computer.y + PADDLE_HEIGHT / 2;
+      const target = ball.y - PADDLE_HEIGHT / 2;
+      const aiSpeed = 4.2 * step;
+      if (computerCenter < ball.y - 10) computer.y += aiSpeed;
+      else if (computerCenter > ball.y + 10) computer.y -= aiSpeed;
+      clampPaddle(computer);
+
+      moveBall();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+      // Dashed center line.
+      ctx.strokeStyle = "#263147";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 12]);
+      ctx.beginPath();
+      ctx.moveTo(WIDTH / 2, 0);
+      ctx.lineTo(WIDTH / 2, HEIGHT);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Paddles and ball.
+      ctx.fillStyle = "#f3f6ff";
+      ctx.fillRect(player.x, player.y, PADDLE_WIDTH, PADDLE_HEIGHT);
+      ctx.fillRect(computer.x, computer.y, PADDLE_WIDTH, PADDLE_HEIGHT);
+
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fillStyle = "#79f2c0";
+      ctx.fill();
+    }
+
+    function frame(timestamp) {
+      const delta = lastTime ? timestamp - lastTime : 16.67;
+      lastTime = timestamp;
+      update(delta);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    function movePlayerToPointer(event) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleY = HEIGHT / rect.height;
+      player.y = (event.clientY - rect.top) * scaleY - PADDLE_HEIGHT / 2;
+      clampPaddle(player);
+    }
+
+    canvas.addEventListener("pointermove", movePlayerToPointer);
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+      }
+      if (event.key === "ArrowUp") keys.up = true;
+      if (event.key === "ArrowDown") keys.down = true;
+    });
+
+    window.addEventListener("keyup", (event) => {
+      if (event.key === "ArrowUp") keys.up = false;
+      if (event.key === "ArrowDown") keys.down = false;
+    });
+
+    restartButton.addEventListener("click", resetGame);
+
+    serve(Math.random() < 0.5 ? -1 : 1);
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
